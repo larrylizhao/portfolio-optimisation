@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Portfolio Recommendation — Antarctica AM
 
-## Getting Started
+A Next.js application that reads last quarter's portfolio data, produces recommended weights for Q2 2026, and displays the recommendation with explanatory charts.
 
-First, run the development server:
+## Approach
+
+### Optimization
+I used a Sharpe ratio heuristic (mean return / volatility) to score each asset, then selected the top 5 under diversification constraints. I chose this over Mean-Variance Optimization because the data quality issues make a covariance matrix unreliable, and a simpler model is easier to explain and defend.
+
+### Data Quality
+I found and resolved 13 data quality issues across all four data sources before writing any optimization code. See `docs/data-exploration.md` for the full analysis. Key discoveries:
+- Benchmark URL in the brief uses `eu-east-1` (invalid AWS region) — corrected to `eu-west-1`
+- Duplicate ISIN with conflicting names
+- 4 different date formats mixed in prices (ISO, Excel serial, DD/MM/YYYY, ISO timestamp)
+- 20% of price values encoded as strings
+- One asset truncated 6 months early — handled via recency-aware confidence penalty
+
+### Key Decisions
+1. **Sharpe over MVO** — robustness and interpretability over statistical sophistication
+2. **Recency-aware confidence** — assets missing recent data are penalized proportionally, not excluded
+3. **Cash as explicit allocation** — unallocated weight displayed transparently, not silently normalized
+4. **Constraints as soft** — treated as guidelines with cash as feasibility buffer
+5. **Benchmark as visual reference** — not an optimization target
+
+## What I'd Do With More Time
+- Mean-Variance Optimization with shrinkage estimator for covariance
+- Transaction cost / turnover penalty
+- Benchmark tracking error as secondary objective
+- Responsive mobile design
+- More comprehensive test coverage
+
+## Running Locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech Stack
+Next.js 16, TypeScript, Tailwind CSS, Zod, Recharts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## AI Tools
+Built with Claude Code. See `CLAUDE.md` for the AI configuration used during development.
