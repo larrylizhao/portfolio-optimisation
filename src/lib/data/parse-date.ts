@@ -2,6 +2,7 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DD_MM_YYYY_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T/;
 
+// Handles 4 formats: YYYY-MM-DD, Excel serial int, DD/MM/YYYY, ISO 8601 timestamp
 export function parseDate(input: string | number): Date | null {
   if (typeof input === "number") {
     return excelSerialToDate(input);

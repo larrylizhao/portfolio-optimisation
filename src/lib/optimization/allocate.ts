@@ -28,6 +28,7 @@ export function allocateWeights(
   for (let iter = 0; iter < 10; iter++) {
     let changed = false;
 
+    // Step A: Clip individual weights to [min, max]
     for (const w of weights) {
       if (w.weight < constraints.minWeight) {
         w.weight = constraints.minWeight;
@@ -39,6 +40,7 @@ export function allocateWeights(
       }
     }
 
+    // Step B: Enforce asset class caps
     const classTotals = new Map<AssetClass, number>();
     for (const w of weights) {
       classTotals.set(w.assetClass, (classTotals.get(w.assetClass) ?? 0) + w.weight);
@@ -57,6 +59,7 @@ export function allocateWeights(
       }
     }
 
+    // Step C: Normalize down if total > 100%
     const total = weights.reduce((sum, w) => sum + w.weight, 0);
     if (total > 1.0) {
       const ratio = 1.0 / total;
@@ -64,6 +67,46 @@ export function allocateWeights(
         w.weight *= ratio;
       }
       changed = true;
+    }
+
+    // Step D: Redistribute surplus to assets with headroom
+    const currentTotal = weights.reduce((sum, w) => sum + w.weight, 0);
+    const surplus = 1.0 - currentTotal;
+    if (surplus > 0.001) {
+      const classCurrentTotals = new Map<AssetClass, number>();
+      for (const w of weights) {
+        classCurrentTotals.set(w.assetClass, (classCurrentTotals.get(w.assetClass) ?? 0) + w.weight);
+      }
+
+      const eligible = weights.filter((w) => {
+        const classCap = constraints.perAssetClassCaps[w.assetClass] ?? 0.3;
+        const classTotal = classCurrentTotals.get(w.assetClass) ?? 0;
+        return w.weight < constraints.maxWeight && classTotal < classCap - 0.001;
+      });
+
+      if (eligible.length > 0) {
+        const eligibleScoreSum = eligible.reduce((sum, w) => {
+          const score = selected.find((s) => s.isin === w.isin)?.adjustedScore ?? 1;
+          return sum + score;
+        }, 0);
+
+        for (const w of eligible) {
+          const score = selected.find((s) => s.isin === w.isin)?.adjustedScore ?? 1;
+          const share = (score / eligibleScoreSum) * surplus;
+
+          const maxByAsset = constraints.maxWeight - w.weight;
+          const classCap = constraints.perAssetClassCaps[w.assetClass] ?? 0.3;
+          const classTotal = classCurrentTotals.get(w.assetClass) ?? 0;
+          const maxByClass = classCap - classTotal;
+
+          const addition = Math.min(share, maxByAsset, maxByClass);
+          if (addition > 0.0001) {
+            w.weight += addition;
+            classCurrentTotals.set(w.assetClass, (classCurrentTotals.get(w.assetClass) ?? 0) + addition);
+            changed = true;
+          }
+        }
+      }
     }
 
     if (!changed) break;

@@ -38,6 +38,7 @@ export function deduplicateHoldings(
   for (const h of raw) {
     const existing = seen.get(h.isin);
     if (existing) {
+      // Use toFixed(10) to avoid floating point precision issues during summation
       existing.weight = parseFloat((existing.weight + h.weight).toFixed(10));
       warnings.push({
         source: "holdings",
@@ -60,7 +61,7 @@ export function normalizeAllData(
 ): CleanedData {
   const warnings: DataWarning[] = [];
 
-  // --- Holdings ---
+  // --- 1. Process Holdings ---
   const { holdings: dedupedHoldings, warnings: dedupWarnings } = deduplicateHoldings(rawHoldings);
   warnings.push(...dedupWarnings);
 
@@ -86,6 +87,7 @@ export function normalizeAllData(
     return { isin: h.isin, name: h.name, assetClass, currency, weight: h.weight };
   });
 
+  // Calculate unallocated cash weight
   const weightSum = holdings.reduce((sum, h) => sum + h.weight, 0);
   const cashWeight = parseFloat((1 - weightSum).toFixed(10));
   if (Math.abs(cashWeight) > 0.001) {
@@ -96,7 +98,7 @@ export function normalizeAllData(
     });
   }
 
-  // --- Prices ---
+  // --- 2. Process Prices ---
   const prices: PriceRecord[] = [];
   let priceParseIssues = 0;
 
@@ -113,6 +115,7 @@ export function normalizeAllData(
     prices.push({ date, isin: p.isin, price: p.price });
   }
 
+  // Record warnings for non-standard data found in prices
   const nonStandardDates = rawPrices.filter(
     (p) => typeof p.date === "number" || (typeof p.date === "string" && !/^\d{4}-\d{2}-\d{2}$/.test(p.date))
   );
@@ -143,7 +146,7 @@ export function normalizeAllData(
     });
   }
 
-  // Detect outliers per ISIN
+  // Statistical outlier detection (3-sigma rule)
   const pricesByIsin = new Map<string, number[]>();
   for (const p of prices) {
     const arr = pricesByIsin.get(p.isin) ?? [];
@@ -166,7 +169,7 @@ export function normalizeAllData(
     }
   }
 
-  // --- Benchmark ---
+  // --- 3. Process Benchmark ---
   const benchmarkMap = new Map<string, BenchmarkRecord>();
   let benchmarkDupes = 0;
 
@@ -177,7 +180,7 @@ export function normalizeAllData(
     if (benchmarkMap.has(key)) {
       benchmarkDupes++;
     }
-    benchmarkMap.set(key, { date, level: b.level });
+    benchmarkMap.set(key, { date, level: b.level }); // Last entry for a given date wins
   }
 
   if (benchmarkDupes > 0) {
@@ -188,6 +191,7 @@ export function normalizeAllData(
     });
   }
 
+  // Explicitly log the known AWS region issue
   warnings.push({
     source: "benchmark",
     issue: "README URL uses eu-east-1 (invalid AWS region)",
@@ -198,7 +202,7 @@ export function normalizeAllData(
     (a, b) => a.date.getTime() - b.date.getTime()
   );
 
-  // --- Constraints ---
+  // --- 4. Process Constraints ---
   const capsSum = Object.values(rawConstraints.per_asset_class_caps).reduce((a, b) => a + b, 0);
   if (Math.abs(capsSum - 1.0) > 0.001) {
     warnings.push({

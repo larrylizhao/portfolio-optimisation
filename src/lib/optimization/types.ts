@@ -14,7 +14,7 @@ export interface AssetScore {
   volatility: number;
   sharpe: number;
   confidence: number;
-  adjustedScore: number;
+  adjustedScore: number; // sharpe * confidence
 }
 
 export interface Recommendation {
@@ -23,6 +23,7 @@ export interface Recommendation {
   assetClass: AssetClass;
   currentWeight: number;
   recommendedWeight: number;
+  score: number;
   change: number;
   reason: string;
 }

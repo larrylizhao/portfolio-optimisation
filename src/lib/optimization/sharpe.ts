@@ -1,17 +1,18 @@
 import type { MonthlyReturn } from "./types";
 
+// Rf = 0: used for relative ranking, not absolute performance measurement
 export function calculateSharpe(returns: MonthlyReturn[]): number {
   if (returns.length < 2) return 0;
 
   const values = returns.map((r) => r.returnValue);
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / (values.length - 1);
-  const std = Math.sqrt(variance);
+  const m = mean(values);
+  const std = stdDev(values);
 
   if (std === 0) return 0;
-  return mean / std;
+  return m / std;
 }
 
+// Penalizes assets with sparse recent data: ratio of actual to expected trading days in last 12 months
 export function calculateConfidence(
   assetDates: Date[],
   allDates: Date[],
@@ -28,6 +29,7 @@ export function calculateConfidence(
 }
 
 export function mean(values: number[]): number {
+  if (values.length === 0) return 0;
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 

@@ -12,6 +12,7 @@ export function optimizePortfolio(data: CleanedData): OptimizationResult {
   allDates.sort((a, b) => a.getTime() - b.getTime());
   const latestDate = allDates[allDates.length - 1];
 
+  // --- Step 1: Score Assets ---
   const scores: AssetScore[] = holdings.map((h) => {
     const monthlyReturns = calculateMonthlyReturns(prices, h.isin);
     const sharpe = calculateSharpe(monthlyReturns);
@@ -31,11 +32,14 @@ export function optimizePortfolio(data: CleanedData): OptimizationResult {
     };
   });
 
+  // --- Step 2: Select Assets ---
   const selected = selectAssets(scores, constraints);
   const selectedIsins = new Set(selected.map((s) => s.isin));
 
+  // --- Step 3: Allocate Weights ---
   const { weights, cashWeight } = allocateWeights(selected, constraints);
 
+  // --- Step 4: Build Results ---
   const recommendations: Recommendation[] = weights.map((w) => {
     const holding = holdings.find((h) => h.isin === w.isin)!;
     const score = scores.find((s) => s.isin === w.isin)!;
@@ -46,6 +50,7 @@ export function optimizePortfolio(data: CleanedData): OptimizationResult {
       assetClass: w.assetClass,
       currentWeight: holding.weight,
       recommendedWeight: w.weight,
+      score: score.adjustedScore,
       change: parseFloat(change.toFixed(4)),
       reason: `Adjusted Sharpe score: ${score.adjustedScore.toFixed(2)} (rank #${selected.indexOf(score) + 1})`,
     };
@@ -65,6 +70,7 @@ export function optimizePortfolio(data: CleanedData): OptimizationResult {
         assetClass: h.assetClass,
         currentWeight: h.weight,
         recommendedWeight: 0,
+        score: score.adjustedScore,
         change: -h.weight,
         reason,
       };
@@ -142,22 +148,22 @@ function calculateCumulativeReturns(
   }
   const sortedMonths = Array.from(months).sort();
 
-  const firstPrices = new Map<string, Map<string, number>>();
-  for (const p of [...prices].sort((a, b) => a.date.getTime() - b.date.getTime())) {
-    const month = `${p.date.getUTCFullYear()}-${String(p.date.getUTCMonth() + 1).padStart(2, "0")}`;
-    const isinMap = firstPrices.get(p.isin) ?? new Map<string, number>();
-    if (!isinMap.has(month)) {
-      isinMap.set(month, p.price);
-    }
-    firstPrices.set(p.isin, isinMap);
-  }
+  // Single sort, single pass for both first and last prices per month
+  const sortedPrices = [...prices].sort((a, b) => a.date.getTime() - b.date.getTime());
 
+  const firstPrices = new Map<string, Map<string, number>>();
   const lastPrices = new Map<string, Map<string, number>>();
-  for (const p of [...prices].sort((a, b) => a.date.getTime() - b.date.getTime())) {
+  for (const p of sortedPrices) {
     const month = `${p.date.getUTCFullYear()}-${String(p.date.getUTCMonth() + 1).padStart(2, "0")}`;
-    const isinMap = lastPrices.get(p.isin) ?? new Map<string, number>();
-    isinMap.set(month, p.price);
-    lastPrices.set(p.isin, isinMap);
+    const firstMap = firstPrices.get(p.isin) ?? new Map<string, number>();
+    if (!firstMap.has(month)) {
+      firstMap.set(month, p.price);
+    }
+    firstPrices.set(p.isin, firstMap);
+
+    const lastMap = lastPrices.get(p.isin) ?? new Map<string, number>();
+    lastMap.set(month, p.price);
+    lastPrices.set(p.isin, lastMap);
   }
 
   const benchmarkByMonth = new Map<string, { first: number; last: number }>();
@@ -176,7 +182,6 @@ function calculateCumulativeReturns(
   let recommendedCum = 1;
   let benchmarkCum = 1;
 
-  // cashWeight is referenced to satisfy the parameter contract; cash earns 0 return
   void cashWeight;
 
   return sortedMonths.map((month) => {

@@ -11,6 +11,7 @@ export function selectAssets(scores: AssetScore[], constraints: Constraints): As
 
     const currentCount = classCounts.get(asset.assetClass) ?? 0;
     const cap = constraints.perAssetClassCaps[asset.assetClass] ?? 0.3;
+
     const estimatedClassWeight = (currentCount + 1) * constraints.minWeight;
     if (estimatedClassWeight > cap) continue;
 
